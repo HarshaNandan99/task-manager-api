@@ -5,6 +5,40 @@ const User = require('../models/user')
 const auth = require('../middleware/auth')
 const { sendWelcomeEmail, sendCancellationEmail } = require('../emails/accounts')
 const router = new express.Router()
+const cors = require('cors')
+
+const BodyParser = require("body-parser");
+const Speakeasy = require("speakeasy");
+
+router.use(BodyParser.json());
+router.use(cors())
+router.use(BodyParser.urlencoded({ extended: true }));
+
+router.post("/totp-secret", (req, res, next) => {
+    var secret = Speakeasy.generateSecret({ length: 20 });
+    res.send({ "secret": secret.base32 });
+})
+
+router.post("/totp-generate", (req, res, next) => {
+    res.send({
+        "token": Speakeasy.totp({
+            secret: req.body.secret,
+            encoding: "base32"
+        }),
+        "remaining": (30 - Math.floor((new Date().getTime() / 1000.0 % 30)))
+    });
+});
+
+router.post("/totp-validate", (req, res, next) => {
+    res.send({
+        "valid": Speakeasy.totp.verify({
+            secret: req.body.secret,
+            encoding: "base32",
+            token: req.body.token,
+            window: 0
+        })
+    })
+})
 
 router.post('/users', async (req, res) => {
     const user = new User(req.body)
@@ -90,7 +124,7 @@ const upload = multer({
     limits: {
         fileSize: 1000000
     },
-    fileFilter(req, file, cb) {
+    fileFilter(_req, file, cb) {
         if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
             return cb(new Error('Please upload an image'))
         }
@@ -104,7 +138,7 @@ router.post('/users/me/avatar', auth, upload.single('avatar'), async (req, res) 
     req.user.avatar = buffer
     await req.user.save()
     res.send()
-}, (error, req, res, next) => {
+}, (error, _req, res, _next) => {
     res.status(400).send({ error: error.message })
 })
 
